@@ -27,7 +27,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -96,7 +96,7 @@ void PatternOffload::SSREventListener(void)
     }
 
     while ((n = uevent_kernel_multicast_recv(device_fd, msg, UEVENT_MSG_LEN)) > 0) {
-         if (n <= 0 || n >= UEVENT_MSG_LEN) {
+         if (n <= 0 || n > UEVENT_MSG_LEN) {
             ALOGE("Message length %d is not correct\n", n);
             continue;
          }
