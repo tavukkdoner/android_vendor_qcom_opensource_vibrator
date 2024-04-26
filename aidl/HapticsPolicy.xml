@@ -47,10 +47,10 @@
     </hapticsPerformAPI>
     <!--If support == True, then OL else CL-->
     <hapticsComposeAPI>
-        <support>True</support>
+        <SupportCompose>True</SupportCompose>
     </hapticsComposeAPI>
     <!--If support == True, then OL else CL-->
     <hapticsComposePwleAPI>
-        <support>False</support>
+        <SupportComposePWLE>False</SupportComposePWLE>
     </hapticsComposePwleAPI>
 </hapticsPolicyConfiguration>

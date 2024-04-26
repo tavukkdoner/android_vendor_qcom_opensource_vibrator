@@ -69,6 +69,7 @@ public:
         HAPTICS_HOSTLESS,
         HAPTICS_STREAMING,
     } haptics_mode_t;
+    static bool inComposition;
     int on(int32_t timeoutMs);
     void offEffect();
     void HapticsWait();
@@ -112,7 +113,9 @@ public:
     ndk::ScopedAStatus composePwle(const std::vector<PrimitivePwle> &composite,
                                const std::shared_ptr<IVibratorCallback> &callback) override;
 private:
-    int play(int effectId, int strength, long *playLengthMs, uint32_t timeoutMs);
+    int play(int effectId, int strength, long* playLengthMs, uint32_t timeoutMs, bool isCompose, float amplitude);
+    void composePlayThread(const std::vector<CompositeEffect>& composite,
+        const std::shared_ptr<IVibratorCallback>& callback);
 };
 
 }  // namespace vibrator
