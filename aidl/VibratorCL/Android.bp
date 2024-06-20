@@ -7,7 +7,7 @@ cc_library_shared {
     vendor: true,
     srcs: ["Vibrator.cpp"],
     include_dirs: ["vendor/qcom/opensource/pal/inc",
-                   "vendor/qcom/proprietary/args/"],
+                   "vendor/qcom/opensource/args/"],
     header_libs: [
         "libspf-headers",
         "libarosal_headers",
