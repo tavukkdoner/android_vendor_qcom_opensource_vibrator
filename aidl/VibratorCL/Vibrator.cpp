@@ -57,6 +57,7 @@ namespace vibrator {
 #define VIB_INVALID_VALUE           -1
 #define WAKEUP_MIN_IDLE_CHECK   (1000 * 10)
 #define MIN_EFFECT_TIME             50
+#define DYNAMIC_CALIB_TIMEOUT  (30 * 60)
 
 static struct pal_stream_attributes stream_attributes;
 static struct pal_device *pal_devices;
@@ -70,6 +71,7 @@ std::mutex VibratorCL::HapticsMutex;
 std::condition_variable VibratorCL::cv;
 std::condition_variable VibratorCL::Eventcv;
 std::thread VibratorCL::OffThread;
+std::atomic<bool> VibratorCL::CalThrdCreated;
 
 bool VibratorCL::OffThrdCreated;
 bool VibratorCL::ActiveUsecase = false;
@@ -79,10 +81,34 @@ VibratorCL::VibratorCL()
     mSupportGain = true;
     mSupportEffects = true;
     mSupportExternalControl = true;
+
+    std::thread dynamicCalThread(&VibratorCL::HapticsCalibThread, this);
+    dynamicCalThread.detach();
 }
 
 VibratorCL::~VibratorCL()
 {
+    CalThrdCreated.store(false);
+}
+
+void VibratorCL::HapticsCalibThread() {
+
+    int32_t status = 0;
+    pal_haptics_payload hapModeVal;
+
+    CalThrdCreated.store(true);
+    hapModeVal.operationMode = PAL_HAP_MODE_DYNAMIC_CAL;
+
+    while (CalThrdCreated.load()) {
+        ALOGE("set dynamic calib param\n");
+        status =  pal_set_param(PAL_PARAM_ID_HAPTICS_MODE,
+                   (void*)&hapModeVal, sizeof(pal_haptics_payload));
+        if (status != 0)
+           ALOGE("Error:Dynamic cal set failed\n");
+
+        ALOGE("wait for %d seconds\n",DYNAMIC_CALIB_TIMEOUT);
+        sleep(DYNAMIC_CALIB_TIMEOUT);
+    }
 }
 
 /** Play vibration

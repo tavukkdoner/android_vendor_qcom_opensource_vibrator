@@ -55,6 +55,7 @@ public:
     static std::condition_variable cv;
     static std::condition_variable Eventcv;
     static std::thread OffThread;
+    static std::atomic<bool> CalThrdCreated;
 
     static bool OffThrdCreated;
     static bool ActiveUsecase;
@@ -62,6 +63,7 @@ public:
     int on(int32_t timeoutMs);
     void offEffect();
     void HapticsWait();
+    void HapticsCalibThread();
     void HapticsWaitTillWaveformComp();
     int32_t StopHapticsStream();
     int32_t offCurrentEffect();
