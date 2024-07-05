@@ -42,6 +42,12 @@ namespace android {
 namespace hardware {
 namespace vibrator {
 
+struct haptics_effect_config_t {
+    size_t size;
+    uint32_t duration;
+    uint8_t *data;
+};
+
 class VibratorCL : public BnVibrator {
 public:
     VibratorCL();
@@ -55,16 +61,23 @@ public:
     static std::condition_variable cv;
     static std::condition_variable Eventcv;
     static std::thread OffThread;
+    static std::thread WriteThread;
     static std::atomic<bool> CalThrdCreated;
-
+    static std::vector<haptics_effect_config_t> PcmEffectInfo;
     static bool OffThrdCreated;
     static bool ActiveUsecase;
-
+    enum haptics_mode_t {
+        HAPTICS_HOSTLESS,
+        HAPTICS_STREAMING,
+    } haptics_mode_t;
     int on(int32_t timeoutMs);
     void offEffect();
     void HapticsWait();
     void HapticsCalibThread();
     void HapticsWaitTillWaveformComp();
+    int HapticsPCMWrite();
+    void HapticsPCMRead();
+    bool IsPCMSupported(int effectID);
     int32_t StopHapticsStream();
     int32_t offCurrentEffect();
     static int32_t StreamHapticsCallback(uint64_t *stream_handle,

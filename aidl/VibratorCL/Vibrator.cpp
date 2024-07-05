@@ -43,7 +43,8 @@
 #include <sys/ioctl.h>
 #include <thread>
 #include <mutex>
-
+#include <fstream>
+#include <sstream>
 #include "PalApi.h"
 #include "PalDefs.h"
 #include "rx_haptics_api.h"
@@ -58,19 +59,31 @@ namespace vibrator {
 #define WAKEUP_MIN_IDLE_CHECK   (1000 * 10)
 #define MIN_EFFECT_TIME             50
 #define DYNAMIC_CALIB_TIMEOUT  (30 * 60)
+#define OUT_BUFFER_SIZE 480
+#define OUT_BUFFER_COUNT 2
+#define MAX_EFFECTS_SUPPORTED 100
 
 static struct pal_stream_attributes stream_attributes;
 static struct pal_device *pal_devices;
 static pal_stream_handle_t *pal_stream_handle_;
+struct pal_buffer_config out_buf_config;
+struct pal_buffer_config in_buf_config;
+struct pal_buffer out_buffer;
 uint8_t HapticsState = 2;
+uint8_t MaxSupportedPCMeffect = 0;
+uint8_t pcm_playback_supported;
+uint8_t HapticsMode;
+int GlobaleffectId = 0;
 
 int32_t HapticsSetParameters(uint32_t param_mode, pal_param_haptics_cnfg_t payload);
 
+std::vector<haptics_effect_config_t> VibratorCL::PcmEffectInfo;
 std::mutex VibratorCL::EventMutex;
 std::mutex VibratorCL::HapticsMutex;
 std::condition_variable VibratorCL::cv;
 std::condition_variable VibratorCL::Eventcv;
 std::thread VibratorCL::OffThread;
+std::thread VibratorCL::WriteThread;
 std::atomic<bool> VibratorCL::CalThrdCreated;
 
 bool VibratorCL::OffThrdCreated;
@@ -94,6 +107,9 @@ VibratorCL::~VibratorCL()
 void VibratorCL::HapticsCalibThread() {
 
     int32_t status = 0;
+
+    HapticsPCMRead();
+
     pal_haptics_payload hapModeVal;
 
     CalThrdCreated.store(true);
@@ -102,13 +118,56 @@ void VibratorCL::HapticsCalibThread() {
     while (CalThrdCreated.load()) {
         ALOGE("set dynamic calib param\n");
         status =  pal_set_param(PAL_PARAM_ID_HAPTICS_MODE,
-                   (void*)&hapModeVal, sizeof(pal_haptics_payload));
-        if (status != 0)
-           ALOGE("Error:Dynamic cal set failed\n");
+                (void*)&hapModeVal, sizeof(pal_haptics_payload));
+        if(status != 0)
+            ALOGE("Error:Dynamic cal set failed\n");
 
         ALOGE("wait for %d seconds\n",DYNAMIC_CALIB_TIMEOUT);
         sleep(DYNAMIC_CALIB_TIMEOUT);
     }
+}
+
+void VibratorCL::HapticsPCMRead() {
+
+    std::ifstream inFile;
+    std::string effect,FinalFilepath;
+    std::string file_path = "/vendor/etc/effect";
+    uint8_t effectCount = 0;
+    float EffectDuration;
+    struct haptics_effect_config_t HapticPcmCfg = {};
+
+    PcmEffectInfo.clear();
+    for (effectCount = 0;effectCount < MAX_EFFECTS_SUPPORTED; effectCount++) {
+        effect = std::to_string(effectCount);
+        FinalFilepath = file_path + effect +".raw";
+        inFile.open(FinalFilepath, std::ios::binary);
+        if (!inFile.is_open()) {
+            ALOGE("File open failure exiting the thread.\n");
+            break;
+        }
+        inFile.seekg(0, std::ios::end);
+        HapticPcmCfg.size = inFile.tellg();
+        //Assuming the haptics pcm data config 48K SampleRate,16 bitWidth,1 ch.
+        EffectDuration = HapticPcmCfg.size/96000.0f;
+        HapticPcmCfg.duration = EffectDuration * 1000;
+        PcmEffectInfo.push_back(HapticPcmCfg);
+        inFile.seekg(0, std::ios::beg);
+        PcmEffectInfo[effectCount].data = (uint8_t *) calloc(1, HapticPcmCfg.size);
+
+        inFile.read(reinterpret_cast<char*> (PcmEffectInfo[effectCount].data), HapticPcmCfg.size);
+        inFile.close();
+    }
+exit:
+    if (effectCount > 1)
+       MaxSupportedPCMeffect = effectCount;
+    ALOGE("HapticsPCMREAD maxSupportedPCMeffects %d", MaxSupportedPCMeffect);
+}
+
+bool VibratorCL::IsPCMSupported(int effectID) {
+    if (effectID >= 0 && effectID < MaxSupportedPCMeffect)
+        return true;
+    else
+        return false;
 }
 
 /** Play vibration
@@ -140,6 +199,25 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     stream_attributes.direction = PAL_AUDIO_OUTPUT;
     stream_attributes.info.opt_stream_info.haptics_type = PAL_STREAM_HAPTICS_TOUCH;
 
+    GlobaleffectId = effectId;
+    pcm_playback_supported = IsPCMSupported(GlobaleffectId);
+
+    if ((HapticsMode && !pcm_playback_supported && pal_stream_handle_) ||
+         (!HapticsMode && pcm_playback_supported && pal_stream_handle_))
+        StopHapticsStream();
+
+    if (pcm_playback_supported && effectId >= 0) {
+        ALOGE("pcm supported %d\n",pcm_playback_supported);
+        stream_attributes.flags = (pal_stream_flags_t)(PAL_STREAM_FLAG_NON_BLOCKING);
+        stream_attributes.info.opt_stream_info.haptics_type = PAL_STREAM_HAPTICS_PCM;
+        stream_attributes.out_media_config.sample_rate = 48000;
+        stream_attributes.out_media_config.bit_width = 16;
+        stream_attributes.out_media_config.aud_fmt_id = PAL_AUDIO_FMT_DEFAULT_PCM;
+        stream_attributes.out_media_config.ch_info.channels = 1;
+        HapticsMode = HAPTICS_STREAMING;
+    } else
+        HapticsMode = HAPTICS_HOSTLESS;
+
     pal_devices = (struct pal_device *) calloc(no_of_devices, sizeof(struct pal_device));
     pal_devices[0].id = PAL_DEVICE_OUT_HAPTICS_DEVICE;
     pal_devices[0].config.bit_width = 16;
@@ -161,16 +239,30 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
         ALOGD("Stream Opened successful\n");
     }
 
-    payload.mode = PAL_STREAM_HAPTICS_TOUCH;
-    payload.effect_id = effectId;
-    payload.strength = strength;
-    payload.time = timeoutMs;
-    payload.amplitude = 0.5;
-    payload.ch_mask = 1;
-    status = HapticsSetParameters(PAL_PARAM_ID_HAPTICS_CNFG, payload);
-    if (status) {
-        ALOGD("Error:Failed to Set haptics wavegen param for haptics");
-        goto exit;
+    if (!pcm_playback_supported) {
+        payload.mode = PAL_STREAM_HAPTICS_TOUCH;
+        payload.effect_id = effectId;
+        payload.strength = strength;
+        payload.time = timeoutMs;
+        payload.amplitude = 0.5;
+        payload.ch_mask = 1;
+        status = HapticsSetParameters(PAL_PARAM_ID_HAPTICS_CNFG, payload);
+        if (status) {
+            ALOGD("Error:Failed to Set haptics wavegen param for haptics");
+            goto exit;
+        }
+    } else if (pcm_playback_supported && effectId >= 0) {
+        memset(&out_buf_config, 0, sizeof(struct pal_buffer_config));
+        out_buf_config.buf_count = OUT_BUFFER_COUNT;
+        out_buf_config.buf_size = OUT_BUFFER_SIZE;
+        memset(&in_buf_config, 0, sizeof(struct pal_buffer_config));
+        in_buf_config.buf_count = 0;
+        in_buf_config.buf_size = 0;
+        status = pal_stream_set_buffer_size(pal_stream_handle_, &in_buf_config, &out_buf_config);
+        if (status) {
+           ALOGE("pal_stream_set_buffer_size failed, returned\n");
+           goto close_stream;
+        }
     }
 
     status = pal_stream_start(pal_stream_handle_);
@@ -178,6 +270,12 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
         ALOGE("Error:Failed to Start haptics");
         goto close_stream;
     }
+
+    if (pcm_playback_supported && effectId >= 0) {
+            WriteThread = std::thread (&VibratorCL::HapticsPCMWrite, this);
+            WriteThread.detach();
+    }
+
     goto exit;
 
 close_stream:
@@ -189,13 +287,54 @@ exit:
     return status;
 }
 
+int VibratorCL::HapticsPCMWrite() {
+
+    uint8_t *buff1;
+    int Offset = 0, iter = 0;
+    int num_bytes_to_write,num_bytes_remaining,write_status,num_bytes_written;
+
+    //Assuming the haptics pcm data config 48K SampleRate,16 bitWidth,1 ch
+    num_bytes_remaining = PcmEffectInfo[GlobaleffectId].size;
+    num_bytes_to_write = OUT_BUFFER_SIZE * OUT_BUFFER_COUNT;
+    buff1 = (uint8_t *)calloc(1, num_bytes_to_write);
+
+    while (num_bytes_remaining && ActiveUsecase) {
+        memset(&out_buffer, 0, sizeof(struct pal_buffer));
+        memset(buff1, 0, num_bytes_to_write);
+        Offset = num_bytes_to_write * iter++;
+
+        if (num_bytes_remaining < num_bytes_to_write)
+            num_bytes_to_write = num_bytes_remaining;
+
+        memcpy(buff1, (uint8_t *)&PcmEffectInfo[GlobaleffectId].data[Offset], num_bytes_to_write);
+
+        out_buffer.buffer = buff1;
+        out_buffer.size = static_cast<size_t>(num_bytes_to_write);
+        write_status = pal_stream_write(pal_stream_handle_, &out_buffer);
+        if ((write_status < 0) && (write_status != -EIO)) {
+            ALOGD("write failed ret=(%d)", write_status);
+            return write_status;
+        } else {
+            num_bytes_written = static_cast<size_t>(write_status);
+            num_bytes_remaining = num_bytes_remaining - num_bytes_written;
+        }
+
+        if (num_bytes_remaining <= 0) {
+            num_bytes_remaining = 0;
+        }
+    }
+    free(buff1);
+    Eventcv.notify_all();
+    return 0;
+}
+
 void VibratorCL::offEffect() {
     int status = 0;
 
     if (pal_stream_handle_) {
        HapticsWait();
        if (!ActiveUsecase && pal_stream_handle_) {
-          status = StopHapticsStream();
+           status = StopHapticsStream();
        }
     }
     OffThrdCreated = false;
@@ -293,7 +432,7 @@ int32_t VibratorCL::offCurrentEffect()
     int status = 0;
     pal_param_haptics_cnfg_t payload;
 
-    if (pal_stream_handle_ && HapticsState == 0) {
+    if (pal_stream_handle_ && HapticsState == 0 && !pcm_playback_supported) {
         payload.ch_mask = 1;
         status = HapticsSetParameters(PARAM_ID_HAPTICS_WAVE_DESIGNER_STOP_PARAM,
                                        payload);
@@ -306,6 +445,7 @@ int32_t VibratorCL::offCurrentEffect()
     else {
         ALOGD("%s: No current Effect is playing, skipping stop",__func__);
     }
+    pcm_playback_supported = 0;
     return status;
 }
 
@@ -416,7 +556,11 @@ ndk::ScopedAStatus VibratorCL::perform(Effect effect, EffectStrength es,
         }).detach();
     }
 
-    *_aidl_return = MIN_EFFECT_TIME;
+    if(pcm_playback_supported) {
+        ALOGD("effect Duration %d\n", PcmEffectInfo[GlobaleffectId].duration);
+       *_aidl_return = PcmEffectInfo[GlobaleffectId].duration;
+    } else
+       *_aidl_return = MIN_EFFECT_TIME;
     return ndk::ScopedAStatus::ok();
 }
 
