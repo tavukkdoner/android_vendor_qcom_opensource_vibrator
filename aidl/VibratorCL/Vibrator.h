@@ -61,7 +61,6 @@ public:
     static std::condition_variable cv;
     static std::condition_variable Eventcv;
     static std::thread OffThread;
-    static std::thread WriteThread;
     static std::atomic<bool> CalThrdCreated;
     static std::vector<haptics_effect_config_t> PcmEffectInfo;
     static bool OffThrdCreated;
@@ -75,7 +74,6 @@ public:
     void HapticsWait();
     void HapticsCalibThread();
     void HapticsWaitTillWaveformComp();
-    int HapticsPCMWrite();
     void HapticsPCMRead();
     bool IsPCMSupported(int effectID);
     int32_t StopHapticsStream();
