@@ -208,6 +208,9 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     pcm_playback_supported = IsPCMSupported(GlobaleffectId);
 
     pal_devices = (struct pal_device *) calloc(no_of_devices, sizeof(struct pal_device));
+    if (pal_devices == NULL)
+        return -1;
+
     pal_devices[0].id = PAL_DEVICE_OUT_HAPTICS_DEVICE;
     pal_devices[0].config.bit_width = 16;
     pal_devices[0].config.sample_rate = 48000;
