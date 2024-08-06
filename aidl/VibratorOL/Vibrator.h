@@ -42,6 +42,30 @@ namespace android {
 namespace hardware {
 namespace vibrator {
 
+class OffloadGlinkConnection {
+public:
+    int GlinkOpen(std::string& dev);
+    int GlinkClose();
+    int GlinkPoll();
+    int GlinkRead(uint8_t *data, size_t size);
+    int GlinkWrite(uint8_t *buf, size_t buflen);
+private:
+    std::string dev_name;
+    int fd;
+};
+
+class PatternOffload {
+public:
+    PatternOffload();
+    void SSREventListener(void);
+    void SendPatterns();
+    int mEnabled;
+private:
+    OffloadGlinkConnection GlinkCh;
+    int initChannel();
+    int sendData(uint8_t *data, int len);
+};
+
 class InputFFDevice {
 public:
     InputFFDevice();
@@ -81,6 +105,8 @@ public:
     class LedVibratorDevice ledVib;
     VibratorOL();
     ~VibratorOL();
+
+    class PatternOffload Offload;
 
     ndk::ScopedAStatus getCapabilities(int32_t* _aidl_return) override;
     ndk::ScopedAStatus off() override;
