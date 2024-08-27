@@ -149,6 +149,7 @@ InputFFDevice::InputFFDevice()
             case MSM_CPU_KALAMA:
             case MSM_CPU_PINEAPPLE:
             case MSM_CPU_SUN:
+            case MSM_CPU_CANOE:
                 mSupportExternalControl = true;
                 break;
             default:
