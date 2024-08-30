@@ -48,6 +48,7 @@
 #include "PalApi.h"
 #include "PalDefs.h"
 #include "rx_haptics_api.h"
+#include "wsa_haptics_vi_api.h"
 #include "Vibrator.h"
 
 namespace aidl {
@@ -360,6 +361,18 @@ int32_t HapticsSetParameters(uint32_t param_mode, pal_param_haptics_cnfg_t paylo
            status = pal_stream_set_param(pal_stream_handle_, param_mode, param_payload);
            break;
        }
+       case  PARAM_ID_HAPTICS_EX_VI_PERSISTENT:
+       {
+           param_payload = (pal_param_payload *) calloc (1,
+                               sizeof(pal_param_payload)+
+                               sizeof(pal_param_haptics_cnfg_t));
+           if (!param_payload)
+                 return status;
+           param_payload->payload_size = sizeof(pal_param_haptics_cnfg_t);
+           memcpy(param_payload->payload, &payload, param_payload->payload_size);
+           status = pal_stream_set_param(pal_stream_handle_, param_mode, param_payload);
+           break;
+       }
        default:
              ALOGE("%s : Param_mode is undefined %d", __func__, param_mode);
           break;
@@ -397,6 +410,9 @@ int32_t VibratorCL::offCurrentEffect()
     else {
         ALOGD("%s: No current Effect is playing, skipping stop",__func__);
     }
+
+    status = HapticsSetParameters(PARAM_ID_HAPTICS_EX_VI_PERSISTENT,
+                                 payload);
     pcm_playback_supported = 0;
     return status;
 }
