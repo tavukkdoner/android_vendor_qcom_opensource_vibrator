@@ -414,7 +414,8 @@ int32_t VibratorCL::offCurrentEffect()
         ALOGD("%s: No current Effect is playing, skipping stop",__func__);
     }
 
-    status = HapticsSetParameters(PARAM_ID_HAPTICS_EX_VI_PERSISTENT,
+    if (pal_stream_handle_)
+        status = HapticsSetParameters(PARAM_ID_HAPTICS_EX_VI_PERSISTENT,
                                  payload);
     pcm_playback_supported = 0;
     return status;
