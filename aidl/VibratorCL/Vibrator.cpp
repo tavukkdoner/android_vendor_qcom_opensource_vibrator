@@ -155,6 +155,8 @@ void VibratorCL::HapticsPCMRead() {
         //Assuming the haptics pcm data config 48K SampleRate,16 bitWidth,1 ch.
         EffectDuration = HapticPcmCfg.size/96000.0f;
         HapticPcmCfg.duration = EffectDuration * 1000;
+        // update intensity based on the requirement for each effect.
+        HapticPcmCfg.intensity = 1.0;
         PcmEffectInfo.push_back(HapticPcmCfg);
         inFile.seekg(0, std::ios::beg);
         PcmEffectInfo[effectCount].data = (uint8_t *) calloc(1, HapticPcmCfg.size);
@@ -242,6 +244,7 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     if (pcm_playback_supported) {
         payload.mode = PAL_STREAM_HAPTICS_PCM;
         payload.buffer_size = PcmEffectInfo[GlobaleffectId].size;
+        payload.amplitude = PcmEffectInfo[GlobaleffectId].intensity;
         ALOGD("pcm playback Effect ID %d", GlobaleffectId);
     }
 

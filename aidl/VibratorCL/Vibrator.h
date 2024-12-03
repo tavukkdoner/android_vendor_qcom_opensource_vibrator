@@ -45,6 +45,7 @@ namespace vibrator {
 struct haptics_effect_config_t {
     size_t size;
     uint32_t duration;
+    float intensity;
     uint8_t *data;
 };
 
