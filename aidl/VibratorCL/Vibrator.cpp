@@ -76,15 +76,9 @@ bool VibratorCL::ActiveUsecase = false;
 
 VibratorCL::VibratorCL()
 {
-    int ret;
     mSupportGain = true;
     mSupportEffects = true;
     mSupportExternalControl = true;
-
-    ret = pal_init();
-    if (ret) {
-        ALOGD("pal_init failed ret=(%d)", ret);
-    }
 }
 
 VibratorCL::~VibratorCL()
