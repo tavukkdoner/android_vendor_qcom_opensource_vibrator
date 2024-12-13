@@ -784,7 +784,7 @@ ndk::ScopedAStatus VibratorOL::getPrimitiveDuration(CompositePrimitive primitive
 
     /* For QMAA compliance */
     if (!ff.isPresent()) {
-        *durationMs = 10; /* fake a constant duration for all primitives */
+        *durationMs = 0; /* fake a constant duration for all primitives */
         return ndk::ScopedAStatus::ok();
     }
 
