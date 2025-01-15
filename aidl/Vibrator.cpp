@@ -27,7 +27,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -154,14 +154,16 @@ public:
     }
 
     ndk::ScopedAStatus setAmplitude(float amplitude) {
-        /* Set amplitude should be only called after On() vibration is enabled so use existing mSelectedVibrator */
-        ndk::ScopedAStatus status;
+        /*
+         * If setAmplitude() is getting called before on() function is called, there is no info
+         * to tell if the setAmplitude() is for VibratorOL or VibratorCL, hence call them both.
+         */
+        if (mSupportCL) {
+            if (!mVibratorCL.setAmplitude(amplitude).isOk())
+                return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+        }
 
-        VibratorSelectionLock.lock();
-        status = mSelectedVibrator->setAmplitude(amplitude);
-        VibratorSelectionLock.unlock();
-
-        return status;
+        return mVibratorOL.setAmplitude(amplitude);
     }
 
     ndk::ScopedAStatus setExternalControl(bool enabled) {
