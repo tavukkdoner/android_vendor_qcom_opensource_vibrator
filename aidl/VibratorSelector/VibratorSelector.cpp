@@ -216,8 +216,9 @@ void VibratorSelector::process_xml_info(haptics_policy_xml_data *data,
     }
 
     if (data->hapticstag == TAG_HAPTICS_COMPOSE_API) {
-        if (!strcmp(tag_name, "support")) {
-            if (!strcmp(data->data_buf, "False")) {
+        if (!strcmp(tag_name, "SupportCompose")) {
+		ALOGE("support value for Composition: %s", data->data_buf);
+            if (strstr(data->data_buf, "False")) {
                 vibForComposition = VIB_TYPE_CL;
             } else {
                 vibForComposition = VIB_TYPE_OL;
@@ -227,8 +228,8 @@ void VibratorSelector::process_xml_info(haptics_policy_xml_data *data,
     }
 
     if (data->hapticstag == TAG_HAPTICS_COMPOSE_PWLE_API) {
-        if (!strcmp(tag_name, "support")) {
-            if (!strcmp(data->data_buf, "False")) {
+        if (!strcmp(tag_name, "SupportComposePWLE")) {
+            if (strstr(data->data_buf, "False")) {
                 vibForPwle = VIB_TYPE_CL;
             } else {
                 vibForPwle = VIB_TYPE_OL;

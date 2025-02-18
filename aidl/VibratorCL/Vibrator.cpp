@@ -43,10 +43,12 @@
 #include <sys/ioctl.h>
 #include <thread>
 #include <mutex>
-
+#include <fstream>
+#include <sstream>
 #include "PalApi.h"
 #include "PalDefs.h"
 #include "rx_haptics_api.h"
+#include "wsa_haptics_vi_api.h"
 #include "Vibrator.h"
 
 namespace aidl {
@@ -57,32 +59,120 @@ namespace vibrator {
 #define VIB_INVALID_VALUE           -1
 #define WAKEUP_MIN_IDLE_CHECK   (1000 * 10)
 #define MIN_EFFECT_TIME             50
+#define DYNAMIC_CALIB_TIMEOUT  (30 * 60)
+#define OUT_BUFFER_SIZE 480
+#define OUT_BUFFER_COUNT 2
+#define MAX_EFFECTS_SUPPORTED 100
+#define COMPOSE_EFFECT_DURATION_INMS  10
+
+static constexpr int32_t ComposeDelayMaxMs = 1000;
+static constexpr int32_t ComposeSizeMax = 256;
 
 static struct pal_stream_attributes stream_attributes;
 static struct pal_device *pal_devices;
 static pal_stream_handle_t *pal_stream_handle_;
+struct pal_buffer_config out_buf_config;
+struct pal_buffer_config in_buf_config;
+struct pal_buffer out_buffer;
 uint8_t HapticsState = 2;
+int MaxSupportedPCMeffect = 0;
+uint8_t pcm_playback_supported;
+int GlobaleffectId = 0;
 
 int32_t HapticsSetParameters(uint32_t param_mode, pal_param_haptics_cnfg_t payload);
 
+std::vector<haptics_effect_config_t> VibratorCL::PcmEffectInfo;
 std::mutex VibratorCL::EventMutex;
 std::mutex VibratorCL::HapticsMutex;
 std::condition_variable VibratorCL::cv;
 std::condition_variable VibratorCL::Eventcv;
 std::thread VibratorCL::OffThread;
+std::atomic<bool> VibratorCL::CalThrdCreated;
 
 bool VibratorCL::OffThrdCreated;
 bool VibratorCL::ActiveUsecase = false;
+bool VibratorCL::inComposition = false;
 
 VibratorCL::VibratorCL()
 {
     mSupportGain = true;
     mSupportEffects = true;
     mSupportExternalControl = true;
+    inComposition = false;
+
+    std::thread dynamicCalThread(&VibratorCL::HapticsCalibThread, this);
+    dynamicCalThread.detach();
 }
 
 VibratorCL::~VibratorCL()
 {
+    CalThrdCreated.store(false);
+}
+
+void VibratorCL::HapticsCalibThread() {
+
+    int32_t status = 0;
+
+    HapticsPCMRead();
+
+    pal_haptics_payload hapModeVal;
+
+    CalThrdCreated.store(true);
+    hapModeVal.operationMode = PAL_HAP_MODE_DYNAMIC_CAL;
+
+    while (CalThrdCreated.load()) {
+        ALOGE("set dynamic calib param\n");
+        status =  pal_set_param(PAL_PARAM_ID_HAPTICS_MODE,
+                (void*)&hapModeVal, sizeof(pal_haptics_payload));
+        if(status != 0)
+            ALOGE("Error:Dynamic cal set failed\n");
+
+        ALOGE("wait for %d seconds\n",DYNAMIC_CALIB_TIMEOUT);
+        sleep(DYNAMIC_CALIB_TIMEOUT);
+    }
+}
+
+void VibratorCL::HapticsPCMRead() {
+
+    std::ifstream inFile;
+    std::string effect,FinalFilepath;
+    std::string file_path = "/vendor/etc/effect";
+    uint8_t effectCount = 0;
+    float EffectDuration;
+    struct haptics_effect_config_t HapticPcmCfg = {};
+
+    PcmEffectInfo.clear();
+    for (effectCount = 0;effectCount < MAX_EFFECTS_SUPPORTED; effectCount++) {
+        effect = std::to_string(effectCount);
+        FinalFilepath = file_path + effect +".raw";
+        inFile.open(FinalFilepath, std::ios::binary);
+        if (!inFile.is_open()) {
+            ALOGE("File open failure exiting the thread.\n");
+            break;
+        }
+        inFile.seekg(0, std::ios::end);
+        HapticPcmCfg.size = inFile.tellg();
+        //Assuming the haptics pcm data config 48K SampleRate,16 bitWidth,1 ch.
+        EffectDuration = HapticPcmCfg.size/96000.0f;
+        HapticPcmCfg.duration = EffectDuration * 1000;
+        PcmEffectInfo.push_back(HapticPcmCfg);
+        inFile.seekg(0, std::ios::beg);
+        PcmEffectInfo[effectCount].data = (uint8_t *) calloc(1, HapticPcmCfg.size);
+
+        inFile.read(reinterpret_cast<char*> (PcmEffectInfo[effectCount].data), HapticPcmCfg.size);
+        MaxSupportedPCMeffect++;
+        inFile.close();
+    }
+exit:
+    MaxSupportedPCMeffect = MaxSupportedPCMeffect - 1;
+    ALOGE("HapticsPCMREAD maxSupportedPCMeffects %d", MaxSupportedPCMeffect);
+}
+
+bool VibratorCL::IsPCMSupported(int effectID) {
+    if (effectID >= 0 && effectID <= MaxSupportedPCMeffect)
+        return true;
+    else
+        return false;
 }
 
 /** Play vibration
@@ -104,7 +194,7 @@ VibratorCL::~VibratorCL()
  *                    kernel driver, and the rest two parameters are used for returning
  *                    back the real playing length from kernel driver.
  */
-int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t timeoutMs) {
+int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t timeoutMs, bool isCompose, float amplitude) {
 
     int status = 0;
     pal_param_haptics_cnfg_t payload;
@@ -114,7 +204,13 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     stream_attributes.direction = PAL_AUDIO_OUTPUT;
     stream_attributes.info.opt_stream_info.haptics_type = PAL_STREAM_HAPTICS_TOUCH;
 
+    GlobaleffectId = effectId;
+    pcm_playback_supported = IsPCMSupported(GlobaleffectId);
+
     pal_devices = (struct pal_device *) calloc(no_of_devices, sizeof(struct pal_device));
+    if (pal_devices == NULL)
+        return -1;
+
     pal_devices[0].id = PAL_DEVICE_OUT_HAPTICS_DEVICE;
     pal_devices[0].config.bit_width = 16;
     pal_devices[0].config.sample_rate = 48000;
@@ -139,8 +235,16 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     payload.effect_id = effectId;
     payload.strength = strength;
     payload.time = timeoutMs;
-    payload.amplitude = 0.5;
     payload.ch_mask = 1;
+    payload.isCompose = isCompose;
+    payload.amplitude = isCompose ? amplitude : 0.5;
+    payload.buffer_size = 0;
+    if (pcm_playback_supported) {
+        payload.mode = PAL_STREAM_HAPTICS_PCM;
+        payload.buffer_size = PcmEffectInfo[GlobaleffectId].size;
+        ALOGD("pcm playback Effect ID %d", GlobaleffectId);
+    }
+
     status = HapticsSetParameters(PAL_PARAM_ID_HAPTICS_CNFG, payload);
     if (status) {
         ALOGD("Error:Failed to Set haptics wavegen param for haptics");
@@ -152,6 +256,7 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
         ALOGE("Error:Failed to Start haptics");
         goto close_stream;
     }
+
     goto exit;
 
 close_stream:
@@ -169,7 +274,7 @@ void VibratorCL::offEffect() {
     if (pal_stream_handle_) {
        HapticsWait();
        if (!ActiveUsecase && pal_stream_handle_) {
-          status = StopHapticsStream();
+           status = StopHapticsStream();
        }
     }
     OffThrdCreated = false;
@@ -203,16 +308,32 @@ int32_t HapticsSetParameters(uint32_t param_mode, pal_param_haptics_cnfg_t paylo
     switch (param_mode) {
        case PAL_PARAM_ID_HAPTICS_CNFG:
        {
-          param_payload = (pal_param_payload *) calloc (1,
-                                 sizeof(pal_param_payload) +
-                                 sizeof(pal_param_haptics_cnfg_t));
-          if (!param_payload)
-              return status;
+           pal_param_haptics_cnfg_t *hpconf;
+           param_payload = (pal_param_payload *) calloc (1,
+                                sizeof(pal_param_payload) +
+                                sizeof(pal_param_haptics_cnfg_t) + payload.buffer_size);
+           if (!param_payload)
+               return status;
 
-          param_payload->payload_size = sizeof(pal_param_haptics_cnfg_t);
-          memcpy(param_payload->payload, &payload, param_payload->payload_size);
-          status = pal_stream_set_param(pal_stream_handle_, param_mode, param_payload);
-          break;
+           param_payload->payload_size = sizeof(pal_param_haptics_cnfg_t) + payload.buffer_size;
+           hpconf = (struct pal_param_haptics_cnfg_t *)param_payload->payload;
+           hpconf->mode = payload.mode;
+           hpconf->effect_id = payload.effect_id;
+           hpconf->strength = payload.strength;
+           hpconf->time = payload.time;
+           hpconf->amplitude = payload.amplitude;
+           hpconf->ch_mask = payload.ch_mask;
+           hpconf->isCompose = payload.isCompose;
+           hpconf->buffer_size = payload.buffer_size;
+           if (payload.buffer_size) {
+               hpconf->buffer_ptr = (uint8_t *) param_payload->payload + sizeof(pal_param_haptics_cnfg_t);
+               memcpy((uint8_t*) hpconf->buffer_ptr,
+                   (uint8_t *)&VibratorCL::PcmEffectInfo[GlobaleffectId].data[0], hpconf->buffer_size);
+           }
+           ALOGE("%s : size of buffer %d", __func__, sizeof(payload.buffer_ptr));
+           status =  pal_stream_set_param(pal_stream_handle_, param_mode, param_payload);
+
+           break;
        }
        case PARAM_ID_HAPTICS_WAVE_DESIGNER_STOP_PARAM:
        {
@@ -238,6 +359,18 @@ int32_t HapticsSetParameters(uint32_t param_mode, pal_param_haptics_cnfg_t paylo
            if (!param_payload)
               return status;
 
+           param_payload->payload_size = sizeof(pal_param_haptics_cnfg_t);
+           memcpy(param_payload->payload, &payload, param_payload->payload_size);
+           status = pal_stream_set_param(pal_stream_handle_, param_mode, param_payload);
+           break;
+       }
+       case  PARAM_ID_HAPTICS_EX_VI_PERSISTENT:
+       {
+           param_payload = (pal_param_payload *) calloc (1,
+                               sizeof(pal_param_payload)+
+                               sizeof(pal_param_haptics_cnfg_t));
+           if (!param_payload)
+                 return status;
            param_payload->payload_size = sizeof(pal_param_haptics_cnfg_t);
            memcpy(param_payload->payload, &payload, param_payload->payload_size);
            status = pal_stream_set_param(pal_stream_handle_, param_mode, param_payload);
@@ -280,6 +413,10 @@ int32_t VibratorCL::offCurrentEffect()
     else {
         ALOGD("%s: No current Effect is playing, skipping stop",__func__);
     }
+
+    status = HapticsSetParameters(PARAM_ID_HAPTICS_EX_VI_PERSISTENT,
+                                 payload);
+    pcm_playback_supported = 0;
     return status;
 }
 
@@ -299,8 +436,9 @@ void VibratorCL::HapticsWaitTillWaveformComp()
 }
 
 ndk::ScopedAStatus VibratorCL::getCapabilities(int32_t* _aidl_return) {
-    *_aidl_return = IVibrator::CAP_ON_CALLBACK |IVibrator::CAP_PERFORM_CALLBACK |
-                    IVibrator::CAP_AMPLITUDE_CONTROL |IVibrator::CAP_EXTERNAL_CONTROL;
+    *_aidl_return = IVibrator::CAP_ON_CALLBACK | IVibrator::CAP_PERFORM_CALLBACK |
+                    IVibrator::CAP_AMPLITUDE_CONTROL | IVibrator::CAP_EXTERNAL_CONTROL |
+                    IVibrator::CAP_COMPOSE_EFFECTS;
     ALOGD("VibratorCL reporting capabilities: %d", *_aidl_return);
 
     return ndk::ScopedAStatus::ok();
@@ -311,8 +449,11 @@ ndk::ScopedAStatus VibratorCL::off() {
 
     ALOGE("VibratorCL off ");
     ret = offCurrentEffect();
+    if (ret)
+        StopHapticsStream();
 
     cv.notify_all();
+    inComposition = false;
     ActiveUsecase = false;
     OffThread = std::thread (&VibratorCL::offEffect, this);
     OffThread.detach();
@@ -336,7 +477,7 @@ ndk::ScopedAStatus VibratorCL::on(int32_t timeoutMs,
 
     ALOGE("VibratorCL on for timeoutMs %d", timeoutMs);
 
-    ret = play(VIB_INVALID_VALUE, VIB_INVALID_VALUE, NULL, timeoutMs);
+    ret = play(VIB_INVALID_VALUE, VIB_INVALID_VALUE, NULL, timeoutMs, false, VIB_INVALID_VALUE);
 
     if (ret != 0)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
@@ -374,7 +515,7 @@ ndk::ScopedAStatus VibratorCL::perform(Effect effect, EffectStrength es,
     if (es != EffectStrength::LIGHT && es != EffectStrength::MEDIUM && es != EffectStrength::STRONG)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
 
-    ret = play((static_cast<int>(effect)), (static_cast<int>(es)), &playLengthMs, VIB_INVALID_VALUE);
+    ret = play((static_cast<int>(effect)), (static_cast<int>(es)), &playLengthMs, VIB_INVALID_VALUE, false, VIB_INVALID_VALUE);
 
     if (ret != 0)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
@@ -388,7 +529,11 @@ ndk::ScopedAStatus VibratorCL::perform(Effect effect, EffectStrength es,
         }).detach();
     }
 
-    *_aidl_return = MIN_EFFECT_TIME;
+    if(pcm_playback_supported) {
+        ALOGD("effect Duration %d\n", PcmEffectInfo[GlobaleffectId].duration);
+       *_aidl_return = PcmEffectInfo[GlobaleffectId].duration;
+    } else
+       *_aidl_return = MIN_EFFECT_TIME;
     return ndk::ScopedAStatus::ok();
 }
 
@@ -428,26 +573,117 @@ ndk::ScopedAStatus VibratorCL::setExternalControl(bool enabled) {
     return ndk::ScopedAStatus::ok();
 }
 
-ndk::ScopedAStatus VibratorCL::getCompositionDelayMax(int32_t* maxDelayMs  __unused) {
-    return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+ndk::ScopedAStatus VibratorCL::getSupportedPrimitives(std::vector<CompositePrimitive>* supported) {
+    *supported = {
+        CompositePrimitive::NOOP,   CompositePrimitive::CLICK,
+        CompositePrimitive::THUD,   CompositePrimitive::SPIN,
+        CompositePrimitive::QUICK_RISE, CompositePrimitive::SLOW_RISE,
+        CompositePrimitive::QUICK_FALL, CompositePrimitive::LIGHT_TICK,
+        CompositePrimitive::LOW_TICK,
+    };
+
+    return ndk::ScopedAStatus::ok();
 }
 
-ndk::ScopedAStatus VibratorCL::getCompositionSizeMax(int32_t* maxSize __unused) {
-    return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+ndk::ScopedAStatus VibratorCL::getPrimitiveDuration(CompositePrimitive primitive,
+    int32_t* durationMs) {
+    uint32_t primitive_id = static_cast<uint32_t>(primitive);
+    *durationMs = MIN_EFFECT_TIME;
+
+    ALOGD("primitive ID %d duration is %dms", primitive, *durationMs);
+
+    return ndk::ScopedAStatus::ok();
 }
 
-ndk::ScopedAStatus VibratorCL::getSupportedPrimitives(std::vector<CompositePrimitive>* supported __unused) {
-    return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+void VibratorCL::composePlayThread(const std::vector<CompositeEffect>& composite,
+    const std::shared_ptr<IVibratorCallback>& callback) {
+    long playLengthMs = 0;
+    int ret = 0;
+
+    ALOGD("start a new thread for composeEffect");
+
+    auto start = std::chrono::high_resolution_clock::now();
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+
+    for (auto& e : composite) {
+        if (inComposition) {
+
+            ALOGD("Delay: %d, Scale: %f, primitive id: %d", e.delayMs, e.scale, static_cast<int>(e.primitive));
+            if (e.delayMs) {
+                if (duration < std::chrono::milliseconds(e.delayMs))
+                    std::this_thread::sleep_for(std::chrono::milliseconds(duration - std::chrono::milliseconds(e.delayMs)));
+            }
+
+            ret = play((static_cast<int>(e.primitive)), VIB_INVALID_VALUE, &playLengthMs, VIB_INVALID_VALUE, true, e.scale);
+
+            if (ret != 0) {
+                ALOGD("Play got failed");
+                return;
+            }
+            start = std::chrono::high_resolution_clock::now();
+            HapticsWaitTillWaveformComp();
+            stop = std::chrono::high_resolution_clock::now();
+
+            duration = duration_cast<std::chrono::milliseconds>(stop - start) - std::chrono::milliseconds(COMPOSE_EFFECT_DURATION_INMS);
+            ALOGD("Delay in getting Waveform complete event: %d", duration);
+        }
+    }
+
+    ALOGD("Notifying composite complete");
+    if (callback)
+        callback->onComplete();
+
+    inComposition = false;
 }
 
-ndk::ScopedAStatus VibratorCL::getPrimitiveDuration(CompositePrimitive primitive __unused,
-                                                  int32_t* durationMs __unused) {
-    return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+
+ndk::ScopedAStatus VibratorCL::compose(const std::vector<CompositeEffect>& composite,
+    const std::shared_ptr<IVibratorCallback>& callback) {
+    int status;
+
+    if (ActiveUsecase || inComposition) {
+        ALOGE("VibratorCL Compose: Haptics is already active skipping this instance");
+        return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+    }
+
+    if (composite.size() > ComposeSizeMax) {
+        ALOGE("Invalid Composite Size");
+        return ndk::ScopedAStatus::fromExceptionCode(EX_ILLEGAL_ARGUMENT);
+    }
+
+    std::vector<CompositePrimitive> supported;
+    getSupportedPrimitives(&supported);
+
+    for (auto& e : composite) {
+        if (e.delayMs > ComposeDelayMaxMs) {
+            return ndk::ScopedAStatus::fromExceptionCode(EX_ILLEGAL_ARGUMENT);
+        }
+        if (e.scale < 0.0f || e.scale > 1.0f) {
+            return ndk::ScopedAStatus::fromExceptionCode(EX_ILLEGAL_ARGUMENT);
+        }
+        if (std::find(supported.begin(), supported.end(), e.primitive) == supported.end()) {
+            return ndk::ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
+        }
+    }
+
+    inComposition = true;
+
+    std::thread composeThread(&VibratorCL::composePlayThread, this, composite, callback);
+
+    composeThread.detach();
+    ALOGD("trigger composition successfully");
+    return ndk::ScopedAStatus::ok();
 }
 
-ndk::ScopedAStatus VibratorCL::compose(const std::vector<CompositeEffect>& composite __unused,
-                                     const std::shared_ptr<IVibratorCallback>& callback __unused) {
-    return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+ndk::ScopedAStatus VibratorCL::getCompositionDelayMax(int32_t* maxDelayMs) {
+    *maxDelayMs = ComposeDelayMaxMs;
+    return ndk::ScopedAStatus::ok();
+}
+
+ndk::ScopedAStatus VibratorCL::getCompositionSizeMax(int32_t* maxSize) {
+    *maxSize = ComposeSizeMax;
+    return ndk::ScopedAStatus::ok();
 }
 
 ndk::ScopedAStatus VibratorCL::getSupportedAlwaysOnEffects(std::vector<Effect>* _aidl_return __unused) {
