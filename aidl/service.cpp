@@ -25,6 +25,9 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "vendor.qti.hardware.vibrator.service"
@@ -39,6 +42,8 @@ using aidl::android::hardware::vibrator::Vibrator;
 
 int main() {
     ABinderProcess_setThreadPoolMaxThreadCount(0);
+    ABinderProcess_startThreadPool();
+
     std::shared_ptr<Vibrator> vib = ndk::SharedRefBase::make<Vibrator>();
 
     const std::string instance = std::string() + Vibrator::descriptor + "/default";
