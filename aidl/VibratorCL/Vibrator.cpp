@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -556,10 +556,12 @@ ndk::ScopedAStatus VibratorCL::setAmplitude(float amplitude) {
 
     payload.ch_mask = 1;
     payload.amplitude = amplitude;
-    status = HapticsSetParameters(PARAM_ID_HAPTICS_WAVE_DESIGNER_UPDATE_PARAM, payload);
-    if (status) {
-        ALOGD("Error:Failed to Set update haptics param");
-        return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
+    if (pal_stream_handle_) {
+        status = HapticsSetParameters(PARAM_ID_HAPTICS_WAVE_DESIGNER_UPDATE_PARAM, payload);
+        if (status) {
+            ALOGD("Error:Failed to Set update haptics param");
+            return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
+        }
     }
 
     return ndk::ScopedAStatus::ok();
