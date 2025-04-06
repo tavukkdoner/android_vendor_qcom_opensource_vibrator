@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -155,6 +155,8 @@ void VibratorCL::HapticsPCMRead() {
         //Assuming the haptics pcm data config 48K SampleRate,16 bitWidth,1 ch.
         EffectDuration = HapticPcmCfg.size/96000.0f;
         HapticPcmCfg.duration = EffectDuration * 1000;
+        // update intensity based on the requirement for each effect.
+        HapticPcmCfg.intensity = 1.0;
         PcmEffectInfo.push_back(HapticPcmCfg);
         inFile.seekg(0, std::ios::beg);
         PcmEffectInfo[effectCount].data = (uint8_t *) calloc(1, HapticPcmCfg.size);
@@ -242,6 +244,7 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     if (pcm_playback_supported) {
         payload.mode = PAL_STREAM_HAPTICS_PCM;
         payload.buffer_size = PcmEffectInfo[GlobaleffectId].size;
+        payload.amplitude = PcmEffectInfo[GlobaleffectId].intensity;
         ALOGD("pcm playback Effect ID %d", GlobaleffectId);
     }
 
@@ -414,7 +417,8 @@ int32_t VibratorCL::offCurrentEffect()
         ALOGD("%s: No current Effect is playing, skipping stop",__func__);
     }
 
-    status = HapticsSetParameters(PARAM_ID_HAPTICS_EX_VI_PERSISTENT,
+    if (pal_stream_handle_)
+        status = HapticsSetParameters(PARAM_ID_HAPTICS_EX_VI_PERSISTENT,
                                  payload);
     pcm_playback_supported = 0;
     return status;
@@ -555,10 +559,12 @@ ndk::ScopedAStatus VibratorCL::setAmplitude(float amplitude) {
 
     payload.ch_mask = 1;
     payload.amplitude = amplitude;
-    status = HapticsSetParameters(PARAM_ID_HAPTICS_WAVE_DESIGNER_UPDATE_PARAM, payload);
-    if (status) {
-        ALOGD("Error:Failed to Set update haptics param");
-        return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
+    if (pal_stream_handle_) {
+        status = HapticsSetParameters(PARAM_ID_HAPTICS_WAVE_DESIGNER_UPDATE_PARAM, payload);
+        if (status) {
+            ALOGD("Error:Failed to Set update haptics param");
+            return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
+        }
     }
 
     return ndk::ScopedAStatus::ok();
