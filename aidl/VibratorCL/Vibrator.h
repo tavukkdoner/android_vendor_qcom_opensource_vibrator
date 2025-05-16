@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -36,6 +36,8 @@
 
 #include <aidl/android/hardware/vibrator/BnVibrator.h>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace aidl {
 namespace android {
@@ -63,7 +65,8 @@ public:
     static std::condition_variable Eventcv;
     static std::thread OffThread;
     static std::atomic<bool> CalThrdCreated;
-    static std::vector<haptics_effect_config_t> PcmEffectInfo;
+    static std::unordered_set<int32_t> PcmEffectList;
+    static std::unordered_map<int32_t, haptics_effect_config_t> PcmEffectInfo;
     static bool OffThrdCreated;
     static bool ActiveUsecase;
     enum haptics_mode_t {
@@ -77,7 +80,10 @@ public:
     void HapticsCalibThread();
     void HapticsWaitTillWaveformComp();
     void HapticsPCMRead();
-    bool IsPCMSupported(int effectID);
+    static int32_t GetEffectData(int32_t effectID, haptics_effect_config_t &effectData);
+    static int32_t LoadEffectData(int32_t effectID, haptics_effect_config_t &effectData);
+    static int32_t IsFileAvailable(std::ifstream *inFile, int32_t effectID);
+    static bool IsPCMSupported(int effectID);
     int32_t StopHapticsStream();
     int32_t offCurrentEffect();
     static int32_t StreamHapticsCallback(uint64_t *stream_handle,
