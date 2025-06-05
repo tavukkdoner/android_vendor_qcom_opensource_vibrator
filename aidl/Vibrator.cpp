@@ -158,9 +158,12 @@ public:
          * If setAmplitude() is getting called before on() function is called, there is no info
          * to tell if the setAmplitude() is for VibratorOL or VibratorCL, hence call them both.
          */
+        ndk::ScopedAStatus status;
+
         if (mSupportCL) {
-            if (!mVibratorCL.setAmplitude(amplitude).isOk())
-                return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+            status = mVibratorCL.setAmplitude(amplitude);
+            if (!status.isOk())
+                return status;
         }
 
         return mVibratorOL.setAmplitude(amplitude);
