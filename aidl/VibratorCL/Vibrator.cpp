@@ -210,7 +210,7 @@ int32_t VibratorCL::GetEffectData(int32_t effectID, haptics_effect_config_t &eff
             if (!result.second) {
                 ALOGE("Unable to add Effect%d.wav data in map\n", effectID);
                 free(effectData.data);
-                effectData.data = NULL;
+                effectData.data = nullptr;
             }
         }
     }
@@ -256,7 +256,7 @@ void VibratorCL::HapticsPCMRead() {
         if (!result.second) {
             ALOGE("Unable to add Effect%d.wav data in map\n", effectCount);
             free(HapticPcmCfg.data);
-            HapticPcmCfg.data = NULL;
+            HapticPcmCfg.data = nullptr;
             inFile.close();
             continue;
         }
@@ -299,8 +299,9 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     stream_attributes.info.opt_stream_info.haptics_type = PAL_STREAM_HAPTICS_TOUCH;
     GlobaleffectId = effectId;
 
+    HapticsMutex.lock();
     pal_devices = (struct pal_device *) calloc(no_of_devices, sizeof(struct pal_device));
-    if (pal_devices == NULL)
+    if (pal_devices == nullptr)
         return -1;
 
     pal_devices[0].id = PAL_DEVICE_OUT_HAPTICS_DEVICE;
@@ -308,13 +309,12 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     pal_devices[0].config.sample_rate = 48000;
     pal_devices[0].config.ch_info.channels = 1;
 
-    HapticsMutex.lock();
     ActiveUsecase = true;
     HapticsState = 0;
     cv.notify_all();
 
     if (pal_stream_handle_ == 0) {
-        status = pal_stream_open(&stream_attributes, no_of_devices, pal_devices, 0, NULL,
+        status = pal_stream_open(&stream_attributes, no_of_devices, pal_devices, 0, nullptr,
               (pal_stream_callback) &VibratorCL::StreamHapticsCallback, 0, &pal_stream_handle_);
         if (status) {
             ALOGE("Error:Failed to open stream\n");
@@ -352,7 +352,7 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
 
 close_stream:
     pal_stream_close(pal_stream_handle_);
-    pal_stream_handle_ = NULL;
+    pal_stream_handle_ = nullptr;
 
 exit:
     HapticsMutex.unlock();
@@ -383,9 +383,12 @@ int32_t VibratorCL::StopHapticsStream() {
     if (status) {
         ALOGE("Error:Failed to close haptics stream");
     }
-    pal_stream_handle_ = NULL;
-    if (pal_devices)
+    pal_stream_handle_ = nullptr;
+    if (pal_devices) {
        free(pal_devices);
+       pal_devices = nullptr;
+    }
+
     HapticsState = 2;
     HapticsMutex.unlock();
     return status;
@@ -394,7 +397,7 @@ int32_t VibratorCL::StopHapticsStream() {
 int32_t HapticsSetParameters(uint32_t param_mode, pal_param_haptics_cnfg_t *payload)
 {
     int32_t status = -1;
-    pal_param_payload *param_payload = NULL;
+    pal_param_payload *param_payload = nullptr;
 
     switch (param_mode) {
        case PAL_PARAM_ID_HAPTICS_CNFG:
@@ -589,7 +592,7 @@ ndk::ScopedAStatus VibratorCL::on(int32_t timeoutMs,
 
     ALOGE("VibratorCL on for timeoutMs %d", timeoutMs);
 
-    ret = play(VIB_INVALID_VALUE, VIB_INVALID_VALUE, NULL, timeoutMs, false, VIB_INVALID_VALUE);
+    ret = play(VIB_INVALID_VALUE, VIB_INVALID_VALUE, nullptr, timeoutMs, false, VIB_INVALID_VALUE);
 
     if (ret != 0)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
