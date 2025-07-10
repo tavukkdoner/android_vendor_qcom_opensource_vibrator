@@ -40,7 +40,9 @@
 
 #include "Vibrator.h"
 #include "VibratorOL/Vibrator.h"
+#ifdef USE_LIBPALCLIENT
 #include "VibratorCL/Vibrator.h"
+#endif
 #include "VibratorSelector/VibratorSelector.h"
 
 namespace aidl {
@@ -51,7 +53,9 @@ namespace vibrator {
 class Vibrator::VibratorPrivate {
 private:
     VibratorOL mVibratorOL;
+#ifdef USE_LIBPALCLIENT
     VibratorCL mVibratorCL;
+#endif
     IVibrator* mSelectedVibrator;
     std::mutex VibratorSelectionLock;
     bool mSupportCL;
@@ -72,6 +76,7 @@ public:
     }
 
     ndk::ScopedAStatus getCapabilities(int32_t* _aidl_return) {
+#ifdef USE_LIBPALCLIENT
         int32_t capabilities;
 
         /* Merge the capabilities of both mVibratorOL and mVibratorCL */
@@ -80,6 +85,9 @@ public:
             mVibratorCL.getCapabilities(&capabilities);
             *_aidl_return |= capabilities;
         }
+#else
+        mVibratorOL.getCapabilities(_aidl_return);
+#endif
 
         return ndk::ScopedAStatus::ok();
     }
@@ -90,10 +98,12 @@ public:
         VibratorSelectionLock.lock();
 
         mSelectedVibrator = &mVibratorOL;
+#ifdef USE_LIBPALCLIENT
         if (mVibSelector && mVibSelector->getVibForOnApi(timeoutMs) == VIB_TYPE_CL)
             mSelectedVibrator = &mVibratorCL;
         else
             mVibratorCL.CheckAndCloseActiveCLHaptics();
+#endif
 
         status = mSelectedVibrator->on(timeoutMs, callback);
         VibratorSelectionLock.unlock();
@@ -120,10 +130,12 @@ public:
         VibratorSelectionLock.lock();
 
         mSelectedVibrator = &mVibratorOL;
+#ifdef USE_LIBPALCLIENT
         if (mVibSelector && mVibSelector->getVibForPerformApi(effect_id) == VIB_TYPE_CL)
             mSelectedVibrator = &mVibratorCL;
         else
             mVibratorCL.CheckAndCloseActiveCLHaptics();
+#endif
 
         status = mSelectedVibrator->perform(effect, es, callback, _aidl_return);
         VibratorSelectionLock.unlock();
@@ -132,6 +144,7 @@ public:
     }
 
     ndk::ScopedAStatus getSupportedEffects(std::vector<Effect>* _aidl_return) {
+#ifdef USE_LIBPALCLIENT
         std::vector<Effect> effectsCL;
 
         /* Merge the effects being supported by both mVibratorOL and mVibratorCL */
@@ -143,11 +156,15 @@ public:
                     _aidl_return->insert(_aidl_return->end(), effectsCL[i]);
             }
         }
+#else
+        mVibratorOL.getSupportedEffects(_aidl_return);
+#endif
 
         return ndk::ScopedAStatus::ok();
     }
 
     ndk::ScopedAStatus setAmplitude(float amplitude) {
+#ifdef USE_LIBPALCLIENT
         /*
          * If setAmplitude() is getting called before on() function is called, there is no info
          * to tell if the setAmplitude() is for VibratorOL or VibratorCL, hence call them both.
@@ -159,6 +176,7 @@ public:
             if (!status.isOk())
                 return status;
         }
+#endif
 
         return mVibratorOL.setAmplitude(amplitude);
     }
@@ -168,8 +186,10 @@ public:
 
         VibratorSelectionLock.lock();
 
+#ifdef USE_LIBPALCLIENT
         if (mSupportCL)
             mVibratorCL.setExternalControl(enabled);
+#endif
 
         status = mVibratorOL.setExternalControl(enabled);
 
@@ -184,8 +204,10 @@ public:
         VibratorSelectionLock.lock();
 
         mSelectedVibrator = &mVibratorOL;
+#ifdef USE_LIBPALCLIENT
         if (mVibSelector && mVibSelector->getVibForComposeApi() == VIB_TYPE_CL)
             mSelectedVibrator = &mVibratorCL;
+#endif
 
         status = mSelectedVibrator->getCompositionDelayMax(maxDelayMs);
         VibratorSelectionLock.unlock();
@@ -199,8 +221,10 @@ public:
         VibratorSelectionLock.lock();
 
         mSelectedVibrator = &mVibratorOL;
+#ifdef USE_LIBPALCLIENT
         if (mVibSelector && mVibSelector->getVibForComposeApi() == VIB_TYPE_CL)
             mSelectedVibrator = &mVibratorCL;
+#endif
 
         status = mSelectedVibrator->getCompositionSizeMax(maxSize);
         VibratorSelectionLock.unlock();
@@ -214,8 +238,10 @@ public:
         VibratorSelectionLock.lock();
 
         mSelectedVibrator = &mVibratorOL;
+#ifdef USE_LIBPALCLIENT
         if (mVibSelector && mVibSelector->getVibForComposeApi() == VIB_TYPE_CL)
             mSelectedVibrator = &mVibratorCL;
+#endif
 
         status = mSelectedVibrator->getSupportedPrimitives(supported);
         VibratorSelectionLock.unlock();
@@ -229,8 +255,10 @@ public:
         VibratorSelectionLock.lock();
 
         mSelectedVibrator = &mVibratorOL;
+#ifdef USE_LIBPALCLIENT
         if (mVibSelector && mVibSelector->getVibForComposeApi() == VIB_TYPE_CL)
             mSelectedVibrator = &mVibratorCL;
+#endif
 
         status = mSelectedVibrator->getPrimitiveDuration(primitive, durationMs);
         VibratorSelectionLock.unlock();
@@ -245,10 +273,12 @@ public:
         VibratorSelectionLock.lock();
 
         mSelectedVibrator = &mVibratorOL;
+#ifdef USE_LIBPALCLIENT
         if (mVibSelector && mVibSelector->getVibForComposeApi() == VIB_TYPE_CL)
             mSelectedVibrator = &mVibratorCL;
         else
             mVibratorCL.CheckAndCloseActiveCLHaptics();
+#endif
 
         status = mSelectedVibrator->compose(composite, callback);
         VibratorSelectionLock.unlock();
