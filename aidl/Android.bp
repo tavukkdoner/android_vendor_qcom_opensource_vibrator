@@ -47,12 +47,6 @@ cc_binary {
     ],
 }
 
-prebuilt_etc {
-    name: "HapticsPolicy.xml",
-    vendor: true,
-    src: "HapticsPolicy.xml",
-}
-
 cc_fuzz {
     name: "vendor.qti.hardware.vibrator-service.aidl_fuzzer",
     vendor: true,
