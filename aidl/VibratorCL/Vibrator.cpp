@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -392,6 +392,15 @@ int32_t VibratorCL::StopHapticsStream() {
     HapticsState = 2;
     HapticsMutex.unlock();
     return status;
+}
+
+void VibratorCL::CheckAndCloseActiveCLHaptics() {
+    if (pal_stream_handle_) {
+       StopHapticsStream();
+       ALOGD("Closing CLHaptics Since OLHaptics is enabling");
+       cv.notify_all();
+       Eventcv.notify_all();
+    }
 }
 
 int32_t HapticsSetParameters(uint32_t param_mode, pal_param_haptics_cnfg_t *payload)
