@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -80,6 +80,7 @@ public:
     void HapticsCalibThread();
     void HapticsWaitTillWaveformComp();
     void HapticsPCMRead();
+    void CheckAndCloseActiveCLHaptics();
     static int32_t GetEffectData(int32_t effectID, haptics_effect_config_t &effectData);
     static int32_t LoadEffectData(int32_t effectID, haptics_effect_config_t &effectData);
     static int32_t IsFileAvailable(std::ifstream *inFile, int32_t effectID);
