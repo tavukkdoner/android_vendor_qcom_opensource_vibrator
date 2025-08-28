@@ -770,8 +770,9 @@ ndk::ScopedAStatus VibratorCL::compose(const std::vector<CompositeEffect>& compo
     int status;
 
     if (ActiveUsecase || inComposition) {
-        ALOGE("VibratorCL Compose: Haptics is already active skipping this instance");
-        return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+        ALOGE("VibratorCL Compose: Haptics is already active, stopping the current effect");
+        Eventcv.notify_all();
+        off();
     }
 
     if (composite.size() > ComposeSizeMax) {
