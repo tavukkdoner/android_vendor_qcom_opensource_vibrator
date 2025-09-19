@@ -604,15 +604,16 @@ ndk::ScopedAStatus VibratorOL::off() {
 ndk::ScopedAStatus VibratorOL::on(int32_t timeoutMs,
                                 const std::shared_ptr<IVibratorCallback>& callback) {
     int ret;
+    int32_t timeoutMs1 = timeoutMs;
 
-    ALOGD("Vibrator on for timeoutMs: %d", timeoutMs);
+    ALOGD("Vibrator on for timeoutMs: %d", timeoutMs1);
     if (ledVib.mDetected)
-        ret = ledVib.on(timeoutMs);
+        ret = ledVib.on(timeoutMs1);
     else {
-        if (timeoutMs < 100) {
-            timeoutMs = 100;
+        if (timeoutMs1 < 100) {
+            timeoutMs1 = 100;
         }
-        ret = ff.on(timeoutMs);
+        ret = ff.on(timeoutMs1);
     }
 
     if (ret != 0)
@@ -621,7 +622,7 @@ ndk::ScopedAStatus VibratorOL::on(int32_t timeoutMs,
     if (callback != nullptr) {
         std::thread([=] {
             ALOGD("Starting on on another thread");
-            usleep(timeoutMs * 1000);
+            usleep(timeoutMs1 * 1000);
             ALOGD("Notifying on complete");
             if (!callback->onComplete().isOk()) {
                 ALOGE("Failed to call onComplete");
