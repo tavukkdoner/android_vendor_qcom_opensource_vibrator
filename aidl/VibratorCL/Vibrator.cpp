@@ -327,6 +327,12 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
         ALOGD("Stream Opened successful\n");
     }
 
+    status = pal_stream_start(pal_stream_handle_);
+    if (status) {
+        ALOGE("Error:Failed to Start haptics");
+        goto close_stream;
+    }
+
     payload.mode = PAL_STREAM_HAPTICS_TOUCH;
     payload.effect_id = effectId;
     payload.strength = strength;
@@ -346,13 +352,8 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
         *playLengthMs = EffectDuration * 1000;
     }
 
-    status = pal_stream_start(pal_stream_handle_);
-    if (status) {
-        ALOGE("Error:Failed to Start haptics");
-        goto close_stream;
-    }
-
-    goto exit;
+    HapticsMutex.unlock();
+    return 0;
 
 close_stream:
     pal_stream_close(pal_stream_handle_);
@@ -773,8 +774,9 @@ ndk::ScopedAStatus VibratorCL::compose(const std::vector<CompositeEffect>& compo
     int status;
 
     if (ActiveUsecase || inComposition) {
-        ALOGE("VibratorCL Compose: Haptics is already active skipping this instance");
-        return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
+        ALOGE("VibratorCL Compose: Haptics is already active, stopping the current effect");
+        Eventcv.notify_all();
+        off();
     }
 
     if (composite.size() > ComposeSizeMax) {
