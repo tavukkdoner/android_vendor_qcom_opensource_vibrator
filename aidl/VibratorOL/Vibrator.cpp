@@ -608,8 +608,12 @@ ndk::ScopedAStatus VibratorOL::on(int32_t timeoutMs,
     ALOGD("Vibrator on for timeoutMs: %d", timeoutMs);
     if (ledVib.mDetected)
         ret = ledVib.on(timeoutMs);
-    else
+    else {
+        if (timeoutMs < 100) {
+            timeoutMs = 100;
+        }
         ret = ff.on(timeoutMs);
+    }
 
     if (ret != 0)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
