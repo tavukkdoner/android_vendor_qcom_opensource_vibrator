@@ -78,6 +78,9 @@ namespace vibrator {
 
 static const char LED_DEVICE[] = "/sys/class/leds/vibrator";
 static const char HAPTICS_SYSFS[] = "/sys/class/qcom-haptics";
+static const char LOW_AMPLITUDE[] = "3000";
+static const char MEDIUM_AMPLITUDE[] = "3200";
+static const char STRONG_AMPLITUDE[] = "3544";
 
 static constexpr int32_t ComposeDelayMaxMs = 1000;
 static constexpr int32_t ComposeSizeMax = 256;
@@ -344,12 +347,43 @@ int InputFFDevice::setAmplitude(uint8_t amplitude) {
     return 0;
 }
 
+void strengthToAmplitudeLedVib(EffectStrength es) {
+    char devicename[PATH_MAX];
+    int fd;
+
+    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
+
+    fd = TEMP_FAILURE_RETRY(open(devicename, O_WRONLY));
+    if (fd < 0) {
+        ALOGE("open %s failed, errno = %d", file, errno);
+        return -errno;
+    }
+
+    switch (es) {
+        case EffectStrength::LIGHT:
+            TEMP_FAILURE_RETRY(write(fd, LOW_AMPLITUDE, strlen(LOW_AMPLITUDE) + 1));
+            break;
+        case EffectStrength::MEDIUM:
+            TEMP_FAILURE_RETRY(write(fd, MEDIUM_AMPLITUDE, strlen(MEDIUM_AMPLITUDE) + 1));
+            break;
+        case EffectStrength::STRONG:
+            TEMP_FAILURE_RETRY(write(fd, STRONG_AMPLITUDE, strlen(STRONG_AMPLITUDE) + 1));
+            break;
+        default:
+            TEMP_FAILURE_RETRY(write(fd, LOW_AMPLITUDE, strlen(LOW_AMPLITUDE) + 1));
+    }
+
+    errno = 0;
+    close(fd);
+}
+
 int InputFFDevice::playEffect(int effectId, EffectStrength es, long *playLengthMs) {
     if (effectId > MAX_PATTERN_ID) {
         ALOGE("effect id %d exceeds %d", effectId, MAX_PATTERN_ID);
         return -1;
     }
 
+    strengthToAmplitudeLedVib(es);
     switch (es) {
     case EffectStrength::LIGHT:
         mCurrMagnitude = LIGHT_MAGNITUDE;
