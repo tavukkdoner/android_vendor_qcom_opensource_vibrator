@@ -355,7 +355,7 @@ void strengthToAmplitudeLedVib(EffectStrength es) {
 
     fd = TEMP_FAILURE_RETRY(open(devicename, O_WRONLY));
     if (fd < 0) {
-        ALOGE("open %s failed, errno = %d", file, errno);
+        ALOGE("open %s failed, errno = %d", devicename, errno);
         return;
     }
 
