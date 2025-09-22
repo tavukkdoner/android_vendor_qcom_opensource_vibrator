@@ -383,7 +383,6 @@ int InputFFDevice::playEffect(int effectId, EffectStrength es, long *playLengthM
         return -1;
     }
 
-    strengthToAmplitudeLedVib(es);
     switch (es) {
     case EffectStrength::LIGHT:
         mCurrMagnitude = LIGHT_MAGNITUDE;
@@ -666,6 +665,7 @@ ndk::ScopedAStatus VibratorOL::perform(Effect effect, EffectStrength es, const s
     long playLengthMs;
     int ret;
 
+    strengthToAmplitudeLedVib(es);
     if (ledVib.mDetected)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
 
