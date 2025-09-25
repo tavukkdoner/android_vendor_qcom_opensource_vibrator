@@ -93,6 +93,7 @@ public:
     LedVibratorDevice();
     int on(int32_t timeoutMs);
     int off();
+    int setAmplitude(uint8_t amplitude);
     bool mDetected;
     bool mVmaxMvDetected;
 private:
