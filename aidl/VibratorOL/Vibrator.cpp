@@ -377,11 +377,13 @@ int LedVibratorDevice::setAmplitude(uint8_t amplitude) {
     int32_t vmax_mv = property_get_int32("vendor.vibrator_ol.vmax_mv", 3544);
     int32_t mv_addition = amplitude * (vmax_mv - vmin_mv) / 0xff;
     int32_t mv = vmin_mv + mv_addition;
-    int ret;
-
+    char mv_str[8];
     char file[PATH_MAX];
+    int ret;
+    
+    snprintf(mv_str, sizeof(mv_str), "%d", mv);
     snprintf(file, sizeof(file), "%s/%s", LED_DEVICE, "vmax_mv");
-    ret = ledVib.write_value(file, low_amplitude.data());
+    ret = ledVib.write_value(file, mv_str);
     return ret;
 }
 
