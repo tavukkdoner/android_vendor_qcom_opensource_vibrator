@@ -438,6 +438,16 @@ LedVibratorDevice::LedVibratorDevice() {
     mDetected = false;
     mVmaxMvDetected = false;
 
+    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
+    fd = TEMP_FAILURE_RETRY(open(devicename, O_RDWR));
+    if (fd < 0) {
+        ALOGE("open %s failed, errno = %d", devicename, errno);
+    } else {
+        mVmaxMvDetected = true;
+        close(fd);
+    }
+    
+    
     snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "activate");
     fd = TEMP_FAILURE_RETRY(open(devicename, O_RDWR));
     if (fd < 0) {
@@ -447,14 +457,6 @@ LedVibratorDevice::LedVibratorDevice() {
 
     mDetected = true;
 
-    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
-    fd = TEMP_FAILURE_RETRY(open(devicename, O_RDWR));
-    if (fd < 0) {
-        ALOGE("open %s failed, errno = %d", devicename, errno);
-        return;
-    }
-
-    mVmaxMvDetected = true;
 }
 
 int LedVibratorDevice::write_value(const char *file, const char *value) {
