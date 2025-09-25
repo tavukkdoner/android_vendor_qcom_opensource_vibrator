@@ -349,27 +349,37 @@ int InputFFDevice::setAmplitude(uint8_t amplitude) {
 
 void strengthToAmplitudeLedVib(EffectStrength es) {
     std::array<char, PROPERTY_VALUE_MAX> low_amplitude, medium_amplitude, strong_amplitude;
-    
+    char devicename[PATH_MAX];
+    int fd;
+
     property_get("vendor.vibrator_ol.low_amplitude", low_amplitude.data(), "3000");
     property_get("vendor.vibrator_ol.medium_amplitude", medium_amplitude.data(), "3000");
     property_get("vendor.vibrator_ol.strong_amplitude", strong_amplitude.data(), "3000");
 
-    char file[PATH_MAX];
-    snprintf(file, sizeof(file), "%s/%s", LED_DEVICE, "vmax_mv");
+    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
+
+    fd = TEMP_FAILURE_RETRY(open(devicename, O_WRONLY));
+    if (fd < 0) {
+        ALOGE("open %s failed, errno = %d", devicename, errno);
+        return;
+    }
     
     switch (es) {
         case EffectStrength::LIGHT:
-            ledVib.write_value(file, low_amplitude.data());
+            TEMP_FAILURE_RETRY(write(fd, low_amplitude.data(), strlen(low_amplitude.data()) + 1));
             break;
         case EffectStrength::MEDIUM:
-            ledVib.write_value(file, medium_amplitude.data());
+            TEMP_FAILURE_RETRY(write(fd, medium_amplitude.data(), strlen(medium_amplitude.data()) + 1));
             break;
         case EffectStrength::STRONG:
-            ledVib.write_value(file, strong_amplitude.data());
+            TEMP_FAILURE_RETRY(write(fd, strong_amplitude.data(), strlen(strong_amplitude.data()) + 1));
             break;
         default:
-            ledVib.write_value(file, low_amplitude.data());
+            TEMP_FAILURE_RETRY(write(fd, low_amplitude.data(), strlen(low_amplitude.data()) + 1));
     }
+
+    errno = 0;
+    close(fd);
 }
 
 int LedVibratorDevice::setAmplitude(uint8_t amplitude) {
@@ -378,12 +388,21 @@ int LedVibratorDevice::setAmplitude(uint8_t amplitude) {
     int32_t mv_addition = amplitude * (vmax_mv - vmin_mv) / 0xff;
     int32_t mv = vmin_mv + mv_addition;
     char mv_str[8];
-    char file[PATH_MAX];
+    char devicename[PATH_MAX];
+    int fd;
     int ret;
     
     snprintf(mv_str, sizeof(mv_str), "%d", mv);
-    snprintf(file, sizeof(file), "%s/%s", LED_DEVICE, "vmax_mv");
-    ret = ledVib.write_value(file, mv_str);
+    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
+
+    fd = TEMP_FAILURE_RETRY(open(devicename, O_WRONLY));
+    if (fd < 0) {
+        ALOGE("open %s failed, errno = %d", devicename, errno);
+        return;
+    }
+    ret = TEMP_FAILURE_RETRY(write(fd, mv_str, strlen(mv_str) + 1));
+    errno = 0;
+    close(fd);
     return ret;
 }
 
