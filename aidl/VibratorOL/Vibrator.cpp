@@ -348,33 +348,41 @@ int InputFFDevice::setAmplitude(uint8_t amplitude) {
 }
 
 void strengthToAmplitudeLedVib(EffectStrength es) {
-    char devicename[PATH_MAX];
-    int fd;
+    std::array<char, PROPERTY_VALUE_MAX> low_amplitude, medium_amplitude, strong_amplitude;
+    
+    property_get("vendor.vibrator_ol.low_amplitude", low_amplitude.data(), "3000");
+    property_get("vendor.vibrator_ol.medium_amplitude", medium_amplitude.data(), "3000");
+    property_get("vendor.vibrator_ol.strong_amplitude", strong_amplitude.data(), "3000");
 
-    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
-
-    fd = TEMP_FAILURE_RETRY(open(devicename, O_WRONLY));
-    if (fd < 0) {
-        ALOGE("open %s failed, errno = %d", devicename, errno);
-        return;
-    }
-
+    char file[PATH_MAX];
+    snprintf(file, sizeof(file), "%s/%s", LED_DEVICE, "vmax_mv");
+    
     switch (es) {
         case EffectStrength::LIGHT:
-            TEMP_FAILURE_RETRY(write(fd, LOW_AMPLITUDE, strlen(LOW_AMPLITUDE) + 1));
+            ledVib.write_value(file, low_amplitude.data());
             break;
         case EffectStrength::MEDIUM:
-            TEMP_FAILURE_RETRY(write(fd, MEDIUM_AMPLITUDE, strlen(MEDIUM_AMPLITUDE) + 1));
+            ledVib.write_value(file, medium_amplitude.data());
             break;
         case EffectStrength::STRONG:
-            TEMP_FAILURE_RETRY(write(fd, STRONG_AMPLITUDE, strlen(STRONG_AMPLITUDE) + 1));
+            ledVib.write_value(file, strong_amplitude.data());
             break;
         default:
-            TEMP_FAILURE_RETRY(write(fd, LOW_AMPLITUDE, strlen(LOW_AMPLITUDE) + 1));
+            ledVib.write_value(file, low_amplitude.data());
     }
+}
 
-    errno = 0;
-    close(fd);
+int LedVibratorDevice::setAmplitude(uint8_t amplitude) {
+    int32_t vmin_mv = property_get_int32("vendor.vibrator_ol.vmin_mv", 1504);
+    int32_t vmax_mv = property_get_int32("vendor.vibrator_ol.vmax_mv", 3544);
+    int32_t mv_addition = amplitude * (vmax_mv - vmin_mv) / 0xff;
+    int32_t mv = vmin_mv + mv_addition;
+    int ret;
+
+    char file[PATH_MAX];
+    snprintf(file, sizeof(file), "%s/%s", LED_DEVICE, "vmax_mv");
+    ret = ledVib.write_value(file, low_amplitude.data());
+    return ret;
 }
 
 int InputFFDevice::playEffect(int effectId, EffectStrength es, long *playLengthMs) {
@@ -426,6 +434,7 @@ LedVibratorDevice::LedVibratorDevice() {
     int fd;
 
     mDetected = false;
+    mVmaxMvDetected = false;
 
     snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "activate");
     fd = TEMP_FAILURE_RETRY(open(devicename, O_RDWR));
@@ -435,6 +444,15 @@ LedVibratorDevice::LedVibratorDevice() {
     }
 
     mDetected = true;
+
+    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
+    fd = TEMP_FAILURE_RETRY(open(devicename, O_RDWR));
+    if (fd < 0) {
+        ALOGE("open %s failed, errno = %d", devicename, errno);
+        return;
+    }
+
+    mVmaxMvDetected = true;
 }
 
 int LedVibratorDevice::write_value(const char *file, const char *value) {
@@ -665,7 +683,12 @@ ndk::ScopedAStatus VibratorOL::perform(Effect effect, EffectStrength es, const s
     long playLengthMs;
     int ret;
 
-    strengthToAmplitudeLedVib(es);
+    
+    //if (ledVib.mDetected && ledVib.mVmaxMvDetected) {
+    //    strengthToAmplitudeLedVib(es);
+    //    return ndk::ScopedAStatus::ok();
+    //}
+    
     if (ledVib.mDetected)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
 
@@ -736,6 +759,15 @@ ndk::ScopedAStatus VibratorOL::setAmplitude(float amplitude) {
     uint8_t tmp;
     int ret;
 
+    ALOGD("Vibrator set amplitude: %f", amplitude);
+    if (ledVib.mDetected && ledVib.mVmaxMvDetected) {
+        tmp = (uint8_t)(amplitude * 0xff);
+        ret = ledVib.setAmplitude(tmp);
+        if (ret != 0)
+            return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_SERVICE_SPECIFIC));
+        return ndk::ScopedAStatus::ok();
+    }
+        
     if (ledVib.mDetected)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
 
