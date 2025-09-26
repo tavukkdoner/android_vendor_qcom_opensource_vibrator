@@ -398,7 +398,7 @@ int LedVibratorDevice::setAmplitude(uint8_t amplitude) {
     fd = TEMP_FAILURE_RETRY(open(devicename, O_WRONLY));
     if (fd < 0) {
         ALOGE("open %s failed, errno = %d", devicename, errno);
-        return;
+        return -1;
     }
     ret = TEMP_FAILURE_RETRY(write(fd, mv_str, strlen(mv_str) + 1));
     errno = 0;
