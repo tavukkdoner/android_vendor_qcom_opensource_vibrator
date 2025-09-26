@@ -462,6 +462,7 @@ LedVibratorDevice::LedVibratorDevice() {
     if (fd < 0) {
         ALOGE("open %s failed, errno = %d", devicename, errno);
     } else {
+        ALOGD("Vibrator vmax detected");
         mVmaxMvDetected = true;
         close(fd);
     }
@@ -707,10 +708,11 @@ ndk::ScopedAStatus VibratorOL::perform(Effect effect, EffectStrength es, const s
     int ret;
 
     
-    //if (ledVib.mDetected && ledVib.mVmaxMvDetected) {
-    //    strengthToAmplitudeLedVib(es);
-    //    return ndk::ScopedAStatus::ok();
-    //}
+    if (ledVib.mDetected && ledVib.mVmaxMvDetected) {
+        ALOGD("Led vibrator perform effect %d", effect);
+        strengthToAmplitudeLedVib(es);
+        return ndk::ScopedAStatus::ok();
+    }
     
     if (ledVib.mDetected)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
