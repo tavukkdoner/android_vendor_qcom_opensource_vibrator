@@ -82,6 +82,8 @@ static const char HAPTICS_SYSFS[] = "/sys/class/qcom-haptics";
 static constexpr int32_t ComposeDelayMaxMs = 1000;
 static constexpr int32_t ComposeSizeMax = 256;
 
+static std::array<char, PROPERTY_VALUE_MAX> low_amplitude, medium_amplitude, strong_amplitude;
+
 enum composeEvent {
     STOP_COMPOSE = 0,
 };
@@ -394,6 +396,17 @@ LedVibratorDevice::LedVibratorDevice() {
     int fd;
 
     mDetected = false;
+    mVmaxMvDetected = false;
+	
+    snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "vmax_mv");
+    fd = TEMP_FAILURE_RETRY(open(devicename, O_RDWR));
+    if (fd < 0) {
+        ALOGE("open %s failed, errno = %d", devicename, errno);
+    } else {
+        ALOGD("Vibrator vmax detected");
+        mVmaxMvDetected = true;
+        close(fd);
+    }
 
     snprintf(devicename, sizeof(devicename), "%s/%s", LED_DEVICE, "activate");
     fd = TEMP_FAILURE_RETRY(open(devicename, O_RDWR));
@@ -403,6 +416,30 @@ LedVibratorDevice::LedVibratorDevice() {
     }
 
     mDetected = true;
+	
+    property_get("vendor.vibrator_ol.low_amplitude", low_amplitude.data(), "3000");
+    property_get("vendor.vibrator_ol.medium_amplitude", medium_amplitude.data(), "3000");
+    property_get("vendor.vibrator_ol.strong_amplitude", strong_amplitude.data(), "3000");
+}
+
+void LedVibratorDevice::setAmplitude(EffectStrength es) {
+    char file[PATH_MAX];
+
+    snprintf(file, sizeof(file), "%s/%s", LED_DEVICE, "vmax_mv");
+	
+    switch (es) {
+        case EffectStrength::LIGHT:
+            write_value(file, low_amplitude.data());
+            break;
+        case EffectStrength::MEDIUM:
+            write_value(file, medium_amplitude.data());
+            break;
+        case EffectStrength::STRONG:
+            write_value(file, strong_amplitude.data());
+            break;
+        default:
+            write_value(file, strong_amplitude.data());
+    }
 }
 
 int LedVibratorDevice::write_value(const char *file, const char *value) {
@@ -632,6 +669,12 @@ ndk::ScopedAStatus VibratorOL::on(int32_t timeoutMs,
 ndk::ScopedAStatus VibratorOL::perform(Effect effect, EffectStrength es, const std::shared_ptr<IVibratorCallback>& callback, int32_t* _aidl_return) {
     long playLengthMs;
     int ret;
+	
+    if (ledVib.mDetected && ledVib.mVmaxMvDetected) {
+        ALOGD("Led vibrator perform effect %d", effect);
+        ledVib.setAmplitude(es);
+        return ndk::ScopedAStatus::ok();
+    }
 
     if (ledVib.mDetected)
         return ndk::ScopedAStatus(AStatus_fromExceptionCode(EX_UNSUPPORTED_OPERATION));
