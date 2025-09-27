@@ -91,9 +91,11 @@ private:
 class LedVibratorDevice {
 public:
     LedVibratorDevice();
+    void setAmplitude(EffectStrength es);
     int on(int32_t timeoutMs);
     int off();
     bool mDetected;
+    bool mVmaxMvDetected;
 private:
     int write_value(const char *file, const char *value);
 };
