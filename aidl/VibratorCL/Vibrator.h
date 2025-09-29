@@ -80,6 +80,7 @@ public:
     void HapticsCalibThread();
     void HapticsWaitTillWaveformComp();
     void HapticsPCMRead();
+    void ClearHapticsHWFault();
     void CheckAndCloseActiveCLHaptics();
     static int32_t GetEffectData(int32_t effectID, haptics_effect_config_t &effectData);
     static int32_t LoadEffectData(int32_t effectID, haptics_effect_config_t &effectData);

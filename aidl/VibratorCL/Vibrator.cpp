@@ -300,6 +300,11 @@ int VibratorCL::play(int effectId, int strength, long *playLengthMs, uint32_t ti
     stream_attributes.info.opt_stream_info.haptics_type = PAL_STREAM_HAPTICS_TOUCH;
     GlobaleffectId = effectId;
 
+   /*
+    * Clear PMIC haptics fault to reset the haptics fault register
+    * for next haptics playback.
+    */
+    ClearHapticsHWFault();
     pal_devices = (struct pal_device *) calloc(no_of_devices, sizeof(struct pal_device));
     if (pal_devices == nullptr) {
         ALOGE("Failed to allocate memory for pal_devices\n");
@@ -362,6 +367,34 @@ close_stream:
 exit:
     HapticsMutex.unlock();
     return status;
+}
+
+void VibratorCL::ClearHapticsHWFault() {
+    char swr_play_sysfs[] = "/sys/class/qcom-haptics/swr_play";
+    char SetClearFault[] = "1";
+    ssize_t bytesWritten;
+    int ret = 0;
+    int fd;
+
+    fd = TEMP_FAILURE_RETRY(::open(swr_play_sysfs, O_WRONLY));
+    if (fd < 0) {
+        ALOGE("Open %s failed, fd = %d\n", swr_play_sysfs, fd);
+        return;
+    }
+
+    bytesWritten = TEMP_FAILURE_RETRY(::write(fd, SetClearFault, strlen(SetClearFault)));
+    if (bytesWritten < 0) {
+        ALOGE("Error Writig to sysfs node\n");
+        goto closefd;
+    }
+
+    if (fsync(fd) < 0) {
+        ALOGE("Error flushing the file\n");
+        goto closefd;
+    }
+    ALOGD("Cleared Pmic Fault.\n");
+closefd:
+    close(fd);
 }
 
 void VibratorCL::offEffect() {
