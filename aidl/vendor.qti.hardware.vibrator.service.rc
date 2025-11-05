@@ -1,7 +1,8 @@
 service vendor.qti.vibrator /vendor/bin/hw/vendor.qti.hardware.vibrator.service
     class hal
     user system
-    group system input
+    group system input wakelock
+    capabilities BLOCK_SUSPEND
 
 on late-init
     write /sys/class/leds/vibrator/trigger "transient"
