@@ -51,6 +51,13 @@ struct haptics_effect_config_t {
     uint8_t *data;
 };
 
+enum HapticsRunState {
+    HAPTICS_IDLE = 0,
+    HAPTICS_RUNNING,
+    HAPTICS_STOPPED,
+    HAPTICS_CLOSED,
+};
+
 class VibratorCL : public BnVibrator {
 public:
     VibratorCL();
