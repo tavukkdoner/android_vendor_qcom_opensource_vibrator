@@ -509,12 +509,17 @@ closefd:
 
 void VibratorCL::offEffect() {
     int status = 0;
+    bool shouldStop = false;
 
     if (pal_stream_handle_) {
-       HapticsWait();
-       if (!ActiveUsecase && pal_stream_handle_) {
-           status = StopHapticsStream();
-       }
+        HapticsWait();
+        HapticsMutex.lock();
+        if (!ActiveUsecase && pal_stream_handle_ && HapticsState != 2)
+            shouldStop = true;
+        HapticsMutex.unlock();
+        if (shouldStop) {
+            status = StopHapticsStream();
+        }
     }
     OffThrdCreated = false;
     ALOGD("Offeffect exit");
@@ -522,7 +527,10 @@ void VibratorCL::offEffect() {
 
 int32_t VibratorCL::StopHapticsStream() {
     int status = 0;
+
     HapticsMutex.lock();
+    HapticsState = 2;
+    HapticsMutex.unlock();
     status = pal_stream_stop(pal_stream_handle_);
     if (status) {
         ALOGE("Error:Failed to stop haptics stream");
@@ -531,23 +539,30 @@ int32_t VibratorCL::StopHapticsStream() {
     if (status) {
         ALOGE("Error:Failed to close haptics stream");
     }
+    HapticsMutex.lock();
     pal_stream_handle_ = nullptr;
     if (pal_devices) {
        free(pal_devices);
        pal_devices = nullptr;
     }
 
-    HapticsState = 2;
     HapticsMutex.unlock();
     return status;
 }
 
 void VibratorCL::CheckAndCloseActiveCLHaptics() {
-    if (pal_stream_handle_) {
-       StopHapticsStream();
-       ALOGD("Closing CLHaptics Since OLHaptics is enabling");
-       cv.notify_all();
-       Eventcv.notify_all();
+    bool shouldStop = false;
+
+    HapticsMutex.lock();
+    if (pal_stream_handle_ && HapticsState != 2)
+        shouldStop = true;
+    HapticsMutex.unlock();
+
+    if (shouldStop) {
+        StopHapticsStream();
+        ALOGD("Closing CLHaptics Since OLHaptics is enabling");
+        cv.notify_all();
+        Eventcv.notify_all();
     }
 }
 
