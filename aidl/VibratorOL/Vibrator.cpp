@@ -141,7 +141,8 @@ InputFFDevice::InputFFDevice()
                 && strcmp(name, "aw8695_haptic")
                 && strcmp(name, "aw8697_haptic")
                 && strcmp(name, "awinic_haptic")
-                && strcmp(name, "drv2624:haptics")) {
+                && strcmp(name, "drv2624:haptics")
+                && strcmp(name, "si_haptic")) {
             ALOGD("not a supported haptics device\n");
             close(fd);
             continue;
