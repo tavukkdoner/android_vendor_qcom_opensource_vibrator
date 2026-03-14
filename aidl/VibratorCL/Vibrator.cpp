@@ -821,7 +821,7 @@ ndk::ScopedAStatus VibratorCL::perform(Effect effect, EffectStrength es,
     }
 
     if(pcm_playback_supported) {
-        ALOGD("effect Duration %d\n", playLengthMs);
+        ALOGD("effect Duration %ld\n", playLengthMs);
        *_aidl_return = playLengthMs;
     } else
        *_aidl_return = MIN_EFFECT_TIME;
@@ -919,7 +919,7 @@ void VibratorCL::composePlayThread(const std::vector<CompositeEffect>& composite
             stop = std::chrono::high_resolution_clock::now();
 
             duration = duration_cast<std::chrono::milliseconds>(stop - start) - std::chrono::milliseconds(COMPOSE_EFFECT_DURATION_INMS);
-            ALOGD("Delay in getting Waveform complete event: %d", duration);
+            ALOGD("Delay in getting Waveform complete event: %lld", duration.count());
         }
     }
 
