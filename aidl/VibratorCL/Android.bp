@@ -6,8 +6,6 @@ cc_library_shared {
     cflags: COMMON_CFLAGS,
     vendor: true,
     srcs: ["Vibrator.cpp"],
-    include_dirs: ["vendor/qcom/opensource/pal/inc",
-                   "vendor/qcom/opensource/args/"],
     header_libs: [
         "libspf-headers",
         "libarosal_headers",
@@ -19,4 +17,5 @@ cc_library_shared {
         "liblog",
         "libpalclient",
     ],
+    export_include_dirs: ["."]
 }
