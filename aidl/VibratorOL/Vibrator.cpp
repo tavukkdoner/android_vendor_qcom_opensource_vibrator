@@ -157,6 +157,7 @@ InputFFDevice::InputFFDevice()
             case MSM_CPU_CAPE:
             case APQ_CPU_CAPE:
             case MSM_CPU_KALAMA:
+            case QCS_CPU_KALAMAP:
             case MSM_CPU_PINEAPPLE:
             case MSM_CPU_SUN:
             case MSM_CPU_CANOE:
